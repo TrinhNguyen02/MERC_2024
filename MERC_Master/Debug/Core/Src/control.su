@@ -1,0 +1,3 @@
+control.c:20:6:constrain	24	static
+control.c:27:5:calcPD	40	static
+control.c:47:6:ctrlMotor	40	static

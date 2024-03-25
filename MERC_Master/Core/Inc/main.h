@@ -40,9 +40,19 @@ extern "C" {
 typedef struct{
 	TIM_HandleTypeDef *htim;
 	uint32_t Channel;
+	int16_t PWM;
+	int16_t* Speed;
+	int16_t	setPointSpeed;
+	int16_t error;
 	uint8_t dirMotor;
-
 }motorStruct;
+
+typedef struct{
+	int16_t speed_1;
+	int16_t speed_2;
+	int16_t speed_3;
+	int16_t speed_4;
+}speedStruct;
 
 
 
@@ -55,7 +65,7 @@ typedef struct{
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
-#define RX_SIZE 10
+#define RX_SPEED_SIZE 10
 #define MAX_SPEED 170
 #define MAX_PWM 100
 

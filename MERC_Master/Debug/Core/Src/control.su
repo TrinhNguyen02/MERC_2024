@@ -1,0 +1,4 @@
+control.c:26:6:constrain	24	static
+control.c:33:9:calcPD	24	static
+control.c:54:6:ctrlMotor	24	static
+control.c:71:6:ctrlDir	8	static

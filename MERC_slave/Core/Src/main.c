@@ -36,38 +36,35 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define RX_CTRL_SIZE 2
+#define TX_SPEED_SIZE 10
 
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+IWDG_HandleTypeDef hiwdg;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
+
+
 int16_t speed_1 = 0;
 int16_t speed_2 = 0;
 int16_t speed_3 = 0;
 int16_t speed_4 = 0;
 
-uint16_t cnt_1 = 0;
-uint16_t cnt_2 = 0;
-uint16_t cnt_3 = 0;
-uint16_t cnt_4 = 0;
+uint8_t txSpeedBuffer[TX_SPEED_SIZE] = {0};
+uint8_t rxCtrlBuffer[RX_CTRL_SIZE] = {0};
 
-uint8_t txBuffer[10] = {0};
-
-
-
-typedef struct{
-	int16_t speed_1;
-	int16_t speed_2;
-	int16_t speed_3;
-	int16_t speed_4;
-}speedStruct;
+extern uint8_t dir_1;
+extern uint8_t dir_2;
 
 speedStruct speedBuffer;
 
@@ -77,22 +74,38 @@ uint8_t indexBufferSlave = 0;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_IWDG_Init(void);
 /* USER CODE BEGIN PFP */
 
-void prepareBuffer(uint8_t* speedBuffer, uint8_t* txBuffer){
-	*txBuffer = 0x55;
-	txBuffer++;
+void prepareBuffer(uint8_t* speedBuffer, uint8_t* txSpeedBuffer){
+	*txSpeedBuffer = 0x55;
+	txSpeedBuffer++;
 	for(int i = 0; i < 8; i++){
-		*txBuffer = *speedBuffer;
-		txBuffer++;
+		*txSpeedBuffer = *speedBuffer;
+		txSpeedBuffer++;
 		speedBuffer++;
 	}
-	*txBuffer = 0xAA;
+	*txSpeedBuffer = 0xAA;
+}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+     HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxCtrlBuffer, RX_CTRL_SIZE);
+     __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+     if(rxCtrlBuffer[0]==0xFF){
+    	 ctrl_DirMotor(rxCtrlBuffer[1]);
+    	 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, SET); 		// set flag connected rx
+    	 HAL_IWDG_Refresh(&hiwdg);
+     }
+     else{
+    	 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, RESET);		// clear flag connected rx
+     }
 }
 
 /* USER CODE END PFP */
@@ -100,7 +113,7 @@ void prepareBuffer(uint8_t* speedBuffer, uint8_t* txBuffer){
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-int16_t calcSpeed(TIM_HandleTypeDef *htim){
+int16_t read_Speed(TIM_HandleTypeDef *htim){
 	static uint16_t preCnt_1 = 0;
 	static uint16_t preCnt_2 = 0;
 	static uint16_t preCnt_3 = 0;
@@ -108,26 +121,26 @@ int16_t calcSpeed(TIM_HandleTypeDef *htim){
 	int16_t speed = 0;
 
 	if(htim->Instance == htim1.Instance){
-		cnt_1 = __HAL_TIM_GET_COUNTER(&htim1);
+		uint16_t cnt_1 = __HAL_TIM_GET_COUNTER(&htim1);
 		speed = (cnt_1 - preCnt_1)*4.2;
 		preCnt_1 = cnt_1;
 		return speed;
 	}
 	else if(htim->Instance == htim2.Instance){
-		cnt_2 = __HAL_TIM_GET_COUNTER(&htim2);
-		speed = (cnt_2 - preCnt_2);
+		uint16_t cnt_2 = __HAL_TIM_GET_COUNTER(&htim2);
+		speed = (cnt_2 - preCnt_2)*4.2;
 		preCnt_2 = cnt_2;
 		return speed;
 	}
 	else if(htim->Instance == htim3.Instance){
-		cnt_3 = __HAL_TIM_GET_COUNTER(&htim3);
-		speed = (cnt_3 - preCnt_3);
+		uint16_t cnt_3 = __HAL_TIM_GET_COUNTER(&htim3);
+		speed = (cnt_3 - preCnt_3)*4.2;
 		preCnt_3 = cnt_3;
 		return speed;
 	}
 	else if(htim->Instance == htim4.Instance){
-		cnt_4 = __HAL_TIM_GET_COUNTER(&htim4);
-		speed = (cnt_4 - preCnt_4);
+		uint16_t cnt_4 = __HAL_TIM_GET_COUNTER(&htim4);
+		speed = (cnt_4 - preCnt_4)*4.2;
 		preCnt_4 = cnt_4;
 		return speed;
 	}
@@ -163,21 +176,24 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
   MX_USART2_UART_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxCtrlBuffer, RX_CTRL_SIZE);
+  __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, RESET);
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_1|TIM_CHANNEL_2);
   HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_1|TIM_CHANNEL_2);
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
   HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_1|TIM_CHANNEL_2);
+
   /* USER CODE END 2 */
-//  speedBuffer.speed_1 = 22221;
-  speedBuffer.speed_2 = 0;
-  speedBuffer.speed_3 = 1000;
-  speedBuffer.speed_4 = 2000;
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -185,15 +201,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  speedBuffer.speed_1 = calcSpeed(&htim1);
-	  speedBuffer.speed_2++;
-	  speedBuffer.speed_3++;
-	  speedBuffer.speed_4++;
+	  speedBuffer.speed_1 = read_Speed(&htim1);
+	  speedBuffer.speed_2 = read_Speed(&htim2);
+	  speedBuffer.speed_3 = read_Speed(&htim3);
+	  speedBuffer.speed_4 = read_Speed(&htim4);
 	  HAL_Delay(10);
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+ 	 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 
-	  prepareBuffer(&speedBuffer, &txBuffer);
-	  HAL_UART_Transmit(&huart2, txBuffer, 10, 10);
+	  prepareBuffer(&speedBuffer, &txSpeedBuffer);
+	  HAL_UART_Transmit(&huart2, txSpeedBuffer, TX_SPEED_SIZE, 10);
 
   }
   /* USER CODE END 3 */
@@ -211,10 +227,11 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
@@ -235,6 +252,34 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief IWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_IWDG_Init(void)
+{
+
+  /* USER CODE BEGIN IWDG_Init 0 */
+
+  /* USER CODE END IWDG_Init 0 */
+
+  /* USER CODE BEGIN IWDG_Init 1 */
+
+  /* USER CODE END IWDG_Init 1 */
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
+  hiwdg.Init.Reload = 149;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN IWDG_Init 2 */
+
+  /* USER CODE END IWDG_Init 2 */
+
 }
 
 /**
@@ -468,6 +513,22 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -483,24 +544,37 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_14
+                          |GPIO_PIN_15|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PC13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PC13 PC14 PC15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  /*Configure GPIO pins : PB0 PB1 PB2 PB14
+                           PB15 PB8 PB9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_14
+                          |GPIO_PIN_15|GPIO_PIN_8|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
 

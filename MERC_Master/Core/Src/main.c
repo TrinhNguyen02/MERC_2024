@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "control.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,8 +52,6 @@ DMA_HandleTypeDef hdma_usart2_rx;
 
 uint8_t rxSpeedBuffer[RX_SPEED_SIZE];
 
-
-
 speedStruct speedMotor;
 
 motorStruct Motor_1;
@@ -60,7 +59,6 @@ motorStruct Motor_2;
 motorStruct Motor_3;
 motorStruct Motor_4;
 
-int16_t output;
 
 /* USER CODE END PV */
 
@@ -91,98 +89,53 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     	 }
     	 HAL_IWDG_Refresh(&hiwdg);
     	 ctrlMotor(&Motor_1);
+    	 ctrlMotor(&Motor_2);
+    	 ctrlMotor(&Motor_3);
+    	 ctrlMotor(&Motor_4);
+    	 HAL_IWDG_Refresh(&hiwdg);
+    	 ctrlDir();
      	 HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
-     }
+    }
 }
 
 
-// void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-//	 if(htim->Instance == htim2.Instance){
-////		 ctrlMotor(&htim1, TIM_CHANNEL_2, setPointSpeed.speed_2, speedMotor.speed_2, 1 , 1);
-////		 ctrlMotor(&htim1, TIM_CHANNEL_3, setPointSpeed.speed_3, speedMotor.speed_3, 1 , 1);
-////		 ctrlMotor(&htim1, TIM_CHANNEL_4, setPointSpeed.speed_4, speedMotor.speed_4, 1 , 1);
-//	 }
-// }
+ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	 if(htim->Instance == htim2.Instance){
+	 }
+ }
 
 void initCtrlMotor(void){
 	Motor_1.htim = &htim1;
 	Motor_1.Channel = TIM_CHANNEL_1;
 	Motor_1.Speed = &(speedMotor.speed_1);
 	Motor_1.error = *(Motor_1.Speed) - Motor_1.setPointSpeed;
-
+	Motor_1.preError = 0;
+	Motor_1.preSetPoint = 0;
 
 	Motor_2.htim = &htim1;
 	Motor_2.Channel = TIM_CHANNEL_2;
-
+	Motor_2.Speed = &(speedMotor.speed_2);
+	Motor_2.error = *(Motor_2.Speed) - Motor_2.setPointSpeed;
+	Motor_2.preError = 0;
+	Motor_2.preSetPoint = 0;
 
 	Motor_3.htim = &htim1;
 	Motor_3.Channel = TIM_CHANNEL_3;
-
+	Motor_3.Speed = &(speedMotor.speed_3);
+	Motor_3.error = *(Motor_3.Speed) - Motor_3.setPointSpeed;
+	Motor_3.preError = 0;
+	Motor_3.preSetPoint = 0;
 
 	Motor_4.htim = &htim1;
 	Motor_4.Channel = TIM_CHANNEL_4;
+	Motor_4.Speed = &(speedMotor.speed_4);
+	Motor_4.error = *(Motor_4.Speed) - Motor_4.setPointSpeed;
+	Motor_4.preError = 0;
+	Motor_4.preSetPoint = 0;
 }
 
 
-// ---------------------------
 
-
-void constrain(int16_t* value, int min, int max) {
-    if (*value <= min) {
-        *value = min;
-    } else if (*value >= max) {
-        *value = max;
-    }
-}
-int16_t calcPD(motorStruct* Motor_x, int16_t input, int16_t setPoint) {
-    static int16_t previous_error = 0;
-    static int16_t previous_setPoint = 0;
-    int16_t error = (int16_t)((setPoint - input)*MAX_PWM/MAX_SPEED);
-    Motor_x->error = error;
-    int8_t kp = 1;
-    int8_t kd = 1;
-    if((setPoint - previous_setPoint) >= 100) {
-    	setPoint-= 50;
-    }
-    else if((setPoint - previous_setPoint) <= -100) {
-    	setPoint+= 50;
-    }
-    previous_setPoint = setPoint;
-
-
-    output = (int16_t)(setPoint*MAX_PWM/MAX_SPEED + kp * error + kd * (error - previous_error));
-
-    previous_setPoint = setPoint;
-    previous_error = (int16_t)error;
-    constrain(&output, -100, 100);
-    return output;
-}
-void ctrlMotor(motorStruct* Motor_x){
-	Motor_x->PWM = calcPD(Motor_x, *(Motor_x->Speed), Motor_x->setPointSpeed);
-	int16_t PWM = Motor_x->PWM;
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, SET);
-	if( PWM == 0) {
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, RESET);
-		Motor_x->dirMotor = 0x00; // dir = 0 1 ~ 0x01
-	    __HAL_TIM_SetCompare(Motor_x->htim, Motor_x->Channel, 0);
-	}
-
-	if (PWM > 0 ){
-		Motor_x->dirMotor = 0x02; // dir = 1 0 ~ 0x02
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, SET);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, RESET);
-	    __HAL_TIM_SetCompare(Motor_x->htim, Motor_x->Channel, PWM*10);
-	}
-	else if (PWM < 0 ){
-		Motor_x->dirMotor = 0x01; // dir = 0 1 ~ 0x01
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, RESET);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, SET);
-	    __HAL_TIM_SetCompare(Motor_x->htim, Motor_x->Channel,PWM*(-10));
-	}
-}
-
-
-//---------------------------
 /* USER CODE END 0 */
 
 /**
@@ -224,13 +177,14 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
 
-//  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim2);
 
   HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxSpeedBuffer, RX_SPEED_SIZE);
   __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
 
   initCtrlMotor();
   /* USER CODE END 2 */
+
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -241,17 +195,16 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	  Motor_1.setPointSpeed = -40;
+	  Motor_2.setPointSpeed = 30;
 	  HAL_Delay(3000);
 	  Motor_1.setPointSpeed = 0;
-	  HAL_Delay(2000);
-	  Motor_1.setPointSpeed = -150;
+	  Motor_2.setPointSpeed = 0;
+	  HAL_Delay(4000);
+	  Motor_1.setPointSpeed = 40;
+	  Motor_2.setPointSpeed = -20;
 	  HAL_Delay(3000);
 	  Motor_1.setPointSpeed = 0;
-	  HAL_Delay(2000);
-	  Motor_1.setPointSpeed = 150;
-	  HAL_Delay(3000);
-	  Motor_1.setPointSpeed = 0;
-	  HAL_Delay(2000);
+	  Motor_2.setPointSpeed = 0;
   }
   /* USER CODE END 3 */
 }

@@ -47,6 +47,12 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+typedef struct{
+	int16_t speed_1;
+	int16_t speed_2;
+	int16_t speed_3;
+	int16_t speed_4;
+}speedStruct;
 
 /* USER CODE END EM */
 

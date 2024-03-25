@@ -43,7 +43,9 @@ typedef struct{
 	int16_t PWM;
 	int16_t* Speed;
 	int16_t	setPointSpeed;
+	int16_t preSetPoint;
 	int16_t error;
+	int16_t preError;
 	uint8_t dirMotor;
 }motorStruct;
 

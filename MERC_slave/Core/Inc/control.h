@@ -11,5 +11,6 @@
 #include "stm32f1xx_hal.h"
 
 void ctrl_DirMotor(uint8_t dirMotor);
+int16_t read_Speed(TIM_HandleTypeDef *htim);
 
 #endif /* INC_CONTROL_H_ */

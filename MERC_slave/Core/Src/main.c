@@ -186,7 +186,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxCtrlBuffer, RX_CTRL_SIZE);
   __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, RESET);
+
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_1|TIM_CHANNEL_2);
   HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_1|TIM_CHANNEL_2);
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
@@ -206,11 +206,13 @@ int main(void)
 	  speedBuffer.speed_3 = read_Speed(&htim3);
 	  speedBuffer.speed_4 = read_Speed(&htim4);
 	  HAL_Delay(10);
- 	 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 
 	  prepareBuffer(&speedBuffer, &txSpeedBuffer);
-	  HAL_UART_Transmit(&huart2, txSpeedBuffer, TX_SPEED_SIZE, 10);
 
+	  if (HAL_UART_Transmit(&huart2, txSpeedBuffer, TX_SPEED_SIZE, 10) != HAL_OK)
+	  {
+		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, RESET);
+	  }
   }
   /* USER CODE END 3 */
 }
